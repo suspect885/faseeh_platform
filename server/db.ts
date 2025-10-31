@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, documents, grammarErrors, terminology } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,109 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getUserDocuments(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .leftJoin(documents, eq(documents.userId, users.id))
+    .limit(100);
+}
+
+export async function createDocument(
+  userId: number,
+  title: string,
+  originalText: string,
+  correctedText?: string,
+  faseehScore?: number,
+  errorCount?: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(documents).values({
+    userId,
+    title,
+    originalText,
+    correctedText,
+    faseehScore,
+    errorCount: errorCount || 0,
+  });
+  
+  return result;
+}
+
+export async function getDocumentById(documentId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db
+    .select()
+    .from(documents)
+    .where(eq(documents.id, documentId))
+    .limit(1);
+  
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function getDocumentErrors(documentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(grammarErrors)
+    .where(eq(grammarErrors.documentId, documentId))
+    .orderBy(grammarErrors.position);
+}
+
+export async function addGrammarError(
+  documentId: number,
+  errorType: string,
+  position: number,
+  originalText: string,
+  suggestion: string,
+  explanation?: string,
+  severity?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  return db.insert(grammarErrors).values({
+    documentId,
+    errorType,
+    position,
+    originalText,
+    suggestion,
+    explanation,
+    severity: severity || "medium",
+  });
+}
+
+export async function getTerminology(term: string) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db
+    .select()
+    .from(terminology)
+    .where(eq(terminology.arabicTerm, term))
+    .limit(1);
+  
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function searchTerminology(searchTerm: string) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(terminology)
+    .where(sql`arabicTerm LIKE ${`%${searchTerm}%`}`)
+    .limit(20);
+}
+
+// TODO: add more feature queries here as your schema grows.
